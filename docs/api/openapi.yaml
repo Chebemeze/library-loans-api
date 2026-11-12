@@ -1,0 +1,939 @@
+openapi: 3.1.0
+info:
+  title: Maple Street Library Loans API
+  version: 1.0.0
+  summary: Books, copies, members, loans and fines for a fictional community library.
+  description: |
+    Fictional data only. Money is integer kobo (fields end in `_kobo`).
+    Dates are ISO 8601 in UTC.
+
+    **No login.** Anyone who can reach the API can change loans. This is a
+    documented limit: run the API only on a private network.
+
+    Every error response has a stable `code` and a `message`.
+    Unknown IDs return 404, business-rule failures return 409, invalid input returns 422.
+
+    Member IDs in URLs are the member's public UUID, never an internal integer.
+    Books are identified by ISBN, copies by barcode, loans and fines by integer ID.
+servers:
+  - url: /
+    description: Relative to the host that serves this file.
+tags:
+  - name: Books
+  - name: Copies
+  - name: Members
+  - name: Loans
+  - name: Fines
+  - name: Health
+
+paths:
+  /v1/books:
+    get:
+      tags: [Books]
+      operationId: searchBooks
+      summary: Search books by title or author
+      description: Case-insensitive search. Without `search`, returns all books in pages.
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of books.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookPage'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+    post:
+      tags: [Books]
+      operationId: createBook
+      summary: Add a book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookCreate'
+      responses:
+        '201':
+          description: Book created. The body holds only the new ID (the ISBN).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedBook'
+        '409':
+          description: A book with this ISBN already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: DUPLICATE_ISBN
+                message: A book with ISBN 9780306406157 already exists.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/books/{isbn}:
+    parameters:
+      - $ref: '#/components/parameters/Isbn'
+    get:
+      tags: [Books]
+      operationId: getBook
+      summary: Read one book and its copies
+      responses:
+        '200':
+          description: The book with its copies and their status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/BookNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/books/{isbn}/copies:
+    parameters:
+      - $ref: '#/components/parameters/Isbn'
+    post:
+      tags: [Copies]
+      operationId: addCopy
+      summary: Add a copy of a book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CopyCreate'
+      responses:
+        '201':
+          description: Copy created. The body holds only the new ID (the barcode).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedCopy'
+        '404':
+          $ref: '#/components/responses/BookNotFound'
+        '409':
+          description: A copy with this barcode already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: DUPLICATE_BARCODE
+                message: A copy with barcode MSL-000123 already exists.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/copies/{barcode}:
+    parameters:
+      - $ref: '#/components/parameters/Barcode'
+    get:
+      tags: [Copies]
+      operationId: getCopy
+      summary: Check one copy before lending
+      responses:
+        '200':
+          description: The copy and its status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Copy'
+        '404':
+          $ref: '#/components/responses/CopyNotFound'
+
+  /v1/members:
+    post:
+      tags: [Members]
+      operationId: createMember
+      summary: Register a member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberCreate'
+      responses:
+        '201':
+          description: Member created. The body holds only the new ID (the public UUID).
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedMember'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/members/{member_id}:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    get:
+      tags: [Members]
+      operationId: getMember
+      summary: Read a member
+      responses:
+        '200':
+          description: The member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+    patch:
+      tags: [Members]
+      operationId: updateMember
+      summary: Change a member's name or phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberUpdate'
+      responses:
+        '200':
+          description: The updated member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/members/{member_id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    post:
+      tags: [Members]
+      operationId: suspendMember
+      summary: Suspend a member. Blocks new loans.
+      responses:
+        '200':
+          description: The member, now suspended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '409':
+          description: The member is already suspended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ALREADY_SUSPENDED
+                message: Member is already suspended.
+
+  /v1/members/{member_id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    post:
+      tags: [Members]
+      operationId: reactivateMember
+      summary: Reactivate a suspended member
+      responses:
+        '200':
+          description: The member, now active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '409':
+          description: The member is not suspended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_SUSPENDED
+                message: Member is not suspended.
+
+  /v1/members/{member_id}/loans:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    get:
+      tags: [Loans]
+      operationId: listMemberLoans
+      summary: A member's loans
+      parameters:
+        - name: open
+          in: query
+          required: false
+          description: When `true`, only loans with no return date.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of loans.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanPage'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/members/{member_id}/fines:
+    parameters:
+      - $ref: '#/components/parameters/MemberId'
+    get:
+      tags: [Fines]
+      operationId: listMemberFines
+      summary: A member's fines
+      parameters:
+        - name: unpaid
+          in: query
+          required: false
+          description: When `true`, only fines not yet fully paid.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: A page of fines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinePage'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/loans:
+    post:
+      tags: [Loans]
+      operationId: borrowCopy
+      summary: Borrow a copy
+      description: |
+        Creates a loan due 14 days after the borrow date. Fails if the copy is
+        on loan or withdrawn, the member already has 3 open loans, or the member
+        is suspended or has unpaid fines.
+
+        Not idempotent (decision Q10): a repeated request fails with
+        `NO_COPY_AVAILABLE` instead of returning the first result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanCreate'
+      responses:
+        '201':
+          description: Loan created. The body holds only the new loan ID.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedLoan'
+        '404':
+          description: The copy or the member does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                copy:
+                  value:
+                    code: COPY_NOT_FOUND
+                    message: No copy with barcode MSL-000999.
+                member:
+                  value:
+                    code: MEMBER_NOT_FOUND
+                    message: No member with that ID.
+        '409':
+          description: The copy is not free, the loan limit is reached, or the member is blocked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                noCopy:
+                  value:
+                    code: NO_COPY_AVAILABLE
+                    message: Copy MSL-000123 is already on loan.
+                limit:
+                  value:
+                    code: LOAN_LIMIT
+                    message: Member already has 3 open loans.
+                blocked:
+                  value:
+                    code: MEMBER_BLOCKED
+                    message: Member is suspended or has unpaid fines.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /v1/loans/{loan_id}:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    get:
+      tags: [Loans]
+      operationId: getLoan
+      summary: Read one loan
+      description: Added so that the `Location` header from `POST /v1/loans` points to a real resource.
+      responses:
+        '200':
+          description: The loan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '404':
+          $ref: '#/components/responses/LoanNotFound'
+
+  /v1/loans/{loan_id}/return:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    post:
+      tags: [Loans]
+      operationId: returnLoan
+      summary: Return a copy
+      description: |
+        An action on an existing loan, not a field edit. It sets `returned_at`,
+        frees the copy, and creates a fine when the return is late
+        (50 kobo per late day, capped at 2,000 kobo per loan).
+        `fine_kobo` is 0 when the return is on time.
+      responses:
+        '200':
+          description: The closed loan and the fine raised by this return.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnResult'
+        '404':
+          $ref: '#/components/responses/LoanNotFound'
+        '409':
+          description: The loan is already returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ALREADY_RETURNED
+                message: Loan 42 was already returned.
+
+  /v1/fines/{fine_id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/FineId'
+    post:
+      tags: [Fines]
+      operationId: recordPayment
+      summary: Record a payment against a fine
+      description: |
+        Partial payments are allowed. A payment is final: a mistake is corrected
+        by a new record, not by deleting this one (decision Q11).
+        A fine is fully paid when the total paid equals the amount.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+      responses:
+        '201':
+          description: Payment recorded. The body holds only the new payment ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedPayment'
+        '404':
+          $ref: '#/components/responses/FineNotFound'
+        '409':
+          description: The payment would take paid amount above the fine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: OVERPAYMENT
+                message: Payment of 500 kobo exceeds the 200 kobo still owed.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
+
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: getReady
+      summary: Ready only when the database answers
+      description: Not versioned, so that health probes do not change with the API version.
+      responses:
+        '200':
+          description: The API can reach the database.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: The database does not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: DATABASE_UNAVAILABLE
+                message: The database did not answer.
+
+components:
+  headers:
+    Location:
+      description: URL of the created resource.
+      schema:
+        type: string
+        format: uri-reference
+
+  parameters:
+    Isbn:
+      name: isbn
+      in: path
+      required: true
+      description: ISBN-10 or ISBN-13, digits only (an X check digit is allowed for ISBN-10). No hyphens.
+      schema:
+        type: string
+        pattern: '^(?:\d{9}[\dX]|\d{13})$'
+        examples: ['9780306406157']
+    Barcode:
+      name: barcode
+      in: path
+      required: true
+      description: The barcode printed on the copy.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    MemberId:
+      name: member_id
+      in: path
+      required: true
+      description: The member's public UUID.
+      schema:
+        type: string
+        format: uuid
+    LoanId:
+      name: loan_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    FineId:
+      name: fine_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Maximum 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Number of items to skip.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    InvalidInput:
+      description: Validation failed. The message names the field.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: INVALID_INPUT
+            message: 'phone: must be digits only'
+    BookNotFound:
+      description: No book with this ISBN.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: BOOK_NOT_FOUND
+            message: No book with that ISBN.
+    CopyNotFound:
+      description: No copy with this barcode.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: COPY_NOT_FOUND
+            message: No copy with that barcode.
+    MemberNotFound:
+      description: No member with this ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: MEMBER_NOT_FOUND
+            message: No member with that ID.
+    LoanNotFound:
+      description: No loan with this ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: LOAN_NOT_FOUND
+            message: No loan with that ID.
+    FineNotFound:
+      description: No fine with this ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FINE_NOT_FOUND
+            message: No fine with that ID.
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code. Clients branch on this, not on `message`.
+          enum:
+            - BOOK_NOT_FOUND
+            - COPY_NOT_FOUND
+            - MEMBER_NOT_FOUND
+            - LOAN_NOT_FOUND
+            - FINE_NOT_FOUND
+            - DUPLICATE_ISBN
+            - DUPLICATE_BARCODE
+            - NO_COPY_AVAILABLE
+            - LOAN_LIMIT
+            - MEMBER_BLOCKED
+            - ALREADY_SUSPENDED
+            - NOT_SUSPENDED
+            - ALREADY_RETURNED
+            - OVERPAYMENT
+            - INVALID_INPUT
+            - DATABASE_UNAVAILABLE
+        message:
+          type: string
+          description: Human-readable text. May change between versions.
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ready]
+
+    BookCreate:
+      type: object
+      required: [isbn, title, authors]
+      additionalProperties: false
+      properties:
+        isbn:
+          type: string
+          pattern: '^(?:\d{9}[\dX]|\d{13})$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        authors:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+
+    CreatedBook:
+      type: object
+      required: [isbn]
+      additionalProperties: false
+      properties:
+        isbn:
+          type: string
+
+    Book:
+      type: object
+      required: [isbn, title, authors, copies]
+      properties:
+        isbn:
+          type: string
+        title:
+          type: string
+        authors:
+          type: array
+          items:
+            type: string
+        copies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Copy'
+
+    BookSummary:
+      type: object
+      required: [isbn, title, authors]
+      properties:
+        isbn:
+          type: string
+        title:
+          type: string
+        authors:
+          type: array
+          items:
+            type: string
+
+    BookPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookSummary'
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CopyCreate:
+      type: object
+      required: [barcode]
+      additionalProperties: false
+      properties:
+        barcode:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    CreatedCopy:
+      type: object
+      required: [barcode]
+      additionalProperties: false
+      properties:
+        barcode:
+          type: string
+
+    Copy:
+      type: object
+      required: [barcode, status, isbn]
+      properties:
+        barcode:
+          type: string
+        isbn:
+          type: string
+        status:
+          type: string
+          enum: [available, on_loan, withdrawn]
+
+    MemberCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Fictional names only.
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+          description: Optional.
+
+    MemberUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        phone:
+          type: [string, 'null']
+          maxLength: 20
+
+    CreatedMember:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+
+    Member:
+      type: object
+      required: [id, name, phone, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Public UUID. Used in every member URL.
+        name:
+          type: string
+        phone:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [active, suspended]
+
+    LoanCreate:
+      type: object
+      required: [copy_barcode, member_id]
+      additionalProperties: false
+      properties:
+        copy_barcode:
+          type: string
+          minLength: 1
+          maxLength: 64
+        member_id:
+          type: string
+          format: uuid
+
+    CreatedLoan:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          minimum: 1
+
+    Loan:
+      type: object
+      required: [id, member_id, copy_barcode, borrowed_at, due_at, returned_at]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        member_id:
+          type: string
+          format: uuid
+        copy_barcode:
+          type: string
+        borrowed_at:
+          type: string
+          format: date-time
+        due_at:
+          type: string
+          format: date-time
+        returned_at:
+          type: [string, 'null']
+          format: date-time
+          description: Null while the loan is open.
+
+    LoanPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Loan'
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ReturnResult:
+      type: object
+      required: [loan, fine_kobo]
+      properties:
+        loan:
+          $ref: '#/components/schemas/Loan'
+        fine_kobo:
+          type: integer
+          minimum: 0
+          description: Fine raised by this return. 0 when on time.
+
+    Fine:
+      type: object
+      required: [id, loan_id, amount_kobo, paid_kobo]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        loan_id:
+          type: integer
+          minimum: 1
+        amount_kobo:
+          type: integer
+          minimum: 0
+          maximum: 2000
+        paid_kobo:
+          type: integer
+          minimum: 0
+
+    FinePage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fine'
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PaymentCreate:
+      type: object
+      required: [amount_kobo]
+      additionalProperties: false
+      properties:
+        amount_kobo:
+          type: integer
+          minimum: 1
+
+    CreatedPayment:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          minimum: 1
