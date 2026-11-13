@@ -32,7 +32,9 @@ paths:
       tags: [Books]
       operationId: searchBooks
       summary: Search books by title or author
-      description: Case-insensitive search. Without `search`, returns all books in pages.
+      description: |
+        Case-insensitive substring search on title or author. Without `search`,
+        returns all books in pages sorted by title then ISBN.
       parameters:
         - name: search
           in: query
@@ -156,6 +158,8 @@ paths:
                 $ref: '#/components/schemas/Copy'
         '404':
           $ref: '#/components/responses/CopyNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
 
   /v1/members:
     post:
@@ -197,10 +201,16 @@ paths:
                 $ref: '#/components/schemas/Member'
         '404':
           $ref: '#/components/responses/MemberNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
     patch:
       tags: [Members]
       operationId: updateMember
       summary: Change a member's name or phone
+      description: |
+        Omitted fields remain unchanged. Sending `phone` as `null` clears it;
+        sending `name` as `null` or an empty object returns 422.
+        Blank whitespace-only values are rejected with 422.
       requestBody:
         required: true
         content:
@@ -244,6 +254,8 @@ paths:
               example:
                 code: ALREADY_SUSPENDED
                 message: Member is already suspended.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
 
   /v1/members/{member_id}/reactivate:
     parameters:
@@ -270,6 +282,8 @@ paths:
               example:
                 code: NOT_SUSPENDED
                 message: Member is not suspended.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
 
   /v1/members/{member_id}/loans:
     parameters:
@@ -282,7 +296,7 @@ paths:
         - name: open
           in: query
           required: false
-          description: When `true`, only loans with no return date.
+          description: When `true`, only open loans (`returned_at` is null). When `false`, only returned loans. Omit for all loans.
           schema:
             type: boolean
         - $ref: '#/components/parameters/Limit'
@@ -310,7 +324,7 @@ paths:
         - name: unpaid
           in: query
           required: false
-          description: When `true`, only fines not yet fully paid.
+          description: When `true`, only fines not yet fully paid. When `false`, only fully paid fines. Omit for all fines.
           schema:
             type: boolean
         - $ref: '#/components/parameters/Limit'
@@ -333,9 +347,12 @@ paths:
       operationId: borrowCopy
       summary: Borrow a copy
       description: |
-        Creates a loan due 14 days after the borrow date. Fails if the copy is
-        on loan or withdrawn, the member already has 3 open loans, or the member
-        is suspended or has unpaid fines.
+        Creates a loan due exactly 14 days (336 hours) after `borrowed_at` in UTC.
+        Checks member and copy existence (404) before business-rule conflicts (409).
+        Fails if the copy is on loan or withdrawn (`NO_COPY_AVAILABLE`), the member
+        is suspended or has unpaid fines (`MEMBER_BLOCKED`), or the member already
+        has 3 open loans (`LOAN_LIMIT`). Overdue unreturned loans do not raise
+        `MEMBER_BLOCKED` until returned.
 
         Not idempotent (decision Q10): a repeated request fails with
         `NO_COPY_AVAILABLE` instead of returning the first result.
@@ -409,6 +426,8 @@ paths:
                 $ref: '#/components/schemas/Loan'
         '404':
           $ref: '#/components/responses/LoanNotFound'
+        '422':
+          $ref: '#/components/responses/InvalidInput'
 
   /v1/loans/{loan_id}/return:
     parameters:
@@ -419,9 +438,10 @@ paths:
       summary: Return a copy
       description: |
         An action on an existing loan, not a field edit. It sets `returned_at`,
-        frees the copy, and creates a fine when the return is late
-        (50 kobo per late day, capped at 2,000 kobo per loan).
-        `fine_kobo` is 0 when the return is on time.
+        frees the copy, and creates a fine record only when the return is late
+        (50 kobo per late day, using ceiling of elapsed 24-hour periods after
+        `due_at`, capped at 2,000 kobo per loan).
+        `fine_kobo` is 0 when the return is on or before `due_at`.
       responses:
         '200':
           description: The closed loan and the fine raised by this return.
@@ -440,6 +460,8 @@ paths:
               example:
                 code: ALREADY_RETURNED
                 message: Loan 42 was already returned.
+        '422':
+          $ref: '#/components/responses/InvalidInput'
 
   /v1/fines/{fine_id}/payments:
     parameters:
@@ -449,9 +471,10 @@ paths:
       operationId: recordPayment
       summary: Record a payment against a fine
       description: |
-        Partial payments are allowed. A payment is final: a mistake is corrected
-        by a new record, not by deleting this one (decision Q11).
-        A fine is fully paid when the total paid equals the amount.
+        Partial payments are allowed. A payment is final: records cannot be
+        deleted, and reversing or adjusting a mistaken positive payment is out
+        of scope for v1.0.0 (decision Q11). A fine is fully paid when the total
+        paid equals the amount.
       requestBody:
         required: true
         content:
@@ -580,7 +603,7 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             code: INVALID_INPUT
-            message: 'phone: must be digits only'
+            message: 'phone: must be 7 to 19 digits, optionally starting with +'
     BookNotFound:
       description: No book with this ISBN.
       content:
@@ -681,6 +704,7 @@ components:
           type: array
           minItems: 1
           maxItems: 20
+          uniqueItems: true
           items:
             type: string
             minLength: 1
@@ -766,6 +790,7 @@ components:
         status:
           type: string
           enum: [available, on_loan, withdrawn]
+          description: Copy withdrawal endpoint is out of scope for v1.0.0.
 
     MemberCreate:
       type: object
@@ -780,7 +805,8 @@ components:
         phone:
           type: [string, 'null']
           maxLength: 20
-          description: Optional.
+          pattern: '^\+?[0-9]{7,19}$'
+          description: Optional. 7 to 19 digits, optionally starting with +.
 
     MemberUpdate:
       type: object
@@ -794,6 +820,8 @@ components:
         phone:
           type: [string, 'null']
           maxLength: 20
+          pattern: '^\+?[0-9]{7,19}$'
+          description: 7 to 19 digits, optionally starting with +. Send null to clear.
 
     CreatedMember:
       type: object
@@ -901,7 +929,7 @@ components:
           minimum: 1
         amount_kobo:
           type: integer
-          minimum: 0
+          minimum: 1
           maximum: 2000
         paid_kobo:
           type: integer
