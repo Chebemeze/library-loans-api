@@ -1,0 +1,61 @@
+name: library-loans
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-library}
+      POSTGRES_USER: ${POSTGRES_USER:-gamp}
+      # Development-only fallback. Set POSTGRES_PASSWORD outside source control
+      # for any non-local deployment; URL-safe characters simplify DATABASE_URL.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gamp}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Inside Compose, connect via the service DNS name, never localhost.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gamp}:${POSTGRES_PASSWORD:-gamp}@db:5432/${POSTGRES_DB:-library}
+      LOAN_PERIOD_DAYS: ${LOAN_PERIOD_DAYS:-14}
+      LOAN_LIMIT_PER_MEMBER: ${LOAN_LIMIT_PER_MEMBER:-3}
+      FINE_PER_LATE_DAY_KOBO: ${FINE_PER_LATE_DAY_KOBO:-50}
+      FINE_CAP_PER_LOAN_KOBO: ${FINE_CAP_PER_LOAN_KOBO:-2000}
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          from urllib.request import urlopen;
+          r = urlopen('http://127.0.0.1:8000/health/ready', timeout=3);
+          raise SystemExit(0 if r.status == 200 else 1)
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

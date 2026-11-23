@@ -1,0 +1,22 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# VCS and local tooling
+.git
+.github
+.venv
+.ruff_cache
+.mypy_cache
+.pytest_cache
+__pycache__
+*.py[cod]
+
+# Generated artifacts and local data
+.coverage
+htmlcov
+*.log
+*.sqlite
+*.db
+.DS_Store
