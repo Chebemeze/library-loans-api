@@ -1,0 +1,249 @@
+[
+  [
+    "get",
+    "/v1/books",
+    "catalog",
+    "search_books",
+    null,
+    200,
+    {
+      "items": [],
+      "limit": 20,
+      "offset": 0
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/books",
+    "catalog",
+    "create_book",
+    {
+      "isbn": "9780306406157",
+      "title": "Book",
+      "authors": [
+        "Ada"
+      ]
+    },
+    201,
+    {
+      "isbn": "9780306406157"
+    },
+    "/v1/books/9780306406157"
+  ],
+  [
+    "get",
+    "/v1/books/9780306406157",
+    "catalog",
+    "get_book",
+    null,
+    200,
+    {
+      "isbn": "9780306406157",
+      "title": "Book",
+      "authors": [
+        "Ada"
+      ],
+      "copies": []
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/books/9780306406157/copies",
+    "catalog",
+    "add_copy",
+    {
+      "barcode": "C1"
+    },
+    201,
+    {
+      "barcode": "C1"
+    },
+    "/v1/copies/C1"
+  ],
+  [
+    "get",
+    "/v1/copies/C1",
+    "catalog",
+    "get_copy",
+    null,
+    200,
+    {
+      "barcode": "C1",
+      "status": "available",
+      "isbn": "9780306406157"
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/members",
+    "members",
+    "create_member",
+    {
+      "name": "Ada"
+    },
+    201,
+    {
+      "id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141"
+    },
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141"
+  ],
+  [
+    "get",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+    "members",
+    "get_member",
+    null,
+    200,
+    {
+      "id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+      "name": "Ada",
+      "phone": null,
+      "status": "active"
+    },
+    null
+  ],
+  [
+    "patch",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+    "members",
+    "update_member",
+    {
+      "phone": null
+    },
+    200,
+    {
+      "id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+      "name": "Ada",
+      "phone": null,
+      "status": "active"
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141/suspend",
+    "members",
+    "suspend_member",
+    null,
+    200,
+    {
+      "id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+      "name": "Ada",
+      "phone": null,
+      "status": "active"
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141/reactivate",
+    "members",
+    "reactivate_member",
+    null,
+    200,
+    {
+      "id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+      "name": "Ada",
+      "phone": null,
+      "status": "active"
+    },
+    null
+  ],
+  [
+    "get",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141/loans",
+    "members",
+    "list_member_loans",
+    null,
+    200,
+    {
+      "items": [],
+      "limit": 20,
+      "offset": 0
+    },
+    null
+  ],
+  [
+    "get",
+    "/v1/members/9e017898-2f34-40c3-a1fd-a3ac1fdfa141/fines",
+    "members",
+    "list_member_fines",
+    null,
+    200,
+    {
+      "items": [],
+      "limit": 20,
+      "offset": 0
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/loans",
+    "loans",
+    "borrow_copy",
+    {
+      "copy_barcode": "C1",
+      "member_id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141"
+    },
+    201,
+    {
+      "id": 1
+    },
+    "/v1/loans/1"
+  ],
+  [
+    "get",
+    "/v1/loans/1",
+    "loans",
+    "get_loan",
+    null,
+    200,
+    {
+      "id": 1,
+      "member_id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+      "copy_barcode": "C1",
+      "borrowed_at": "2026-01-01T00:00:00Z",
+      "due_at": "2026-01-15T00:00:00Z",
+      "returned_at": null
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/loans/1/return",
+    "loans",
+    "return_loan",
+    null,
+    200,
+    {
+      "loan": {
+        "id": 1,
+        "member_id": "9e017898-2f34-40c3-a1fd-a3ac1fdfa141",
+        "copy_barcode": "C1",
+        "borrowed_at": "2026-01-01T00:00:00Z",
+        "due_at": "2026-01-15T00:00:00Z",
+        "returned_at": null
+      },
+      "fine_kobo": 0
+    },
+    null
+  ],
+  [
+    "post",
+    "/v1/fines/1/payments",
+    "fines",
+    "record_payment",
+    {
+      "amount_kobo": 50
+    },
+    201,
+    {
+      "id": 1
+    },
+    null
+  ]
+]
