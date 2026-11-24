@@ -1,0 +1,86 @@
+name: CI
+
+# Run on every pull request, regardless of its target branch, and on pushes to
+# the shared branches. This includes pull requests into both develop and main.
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+      - name: Run Ruff
+        run: uv run --locked --no-sync ruff check .
+
+  type-check:
+    name: Mypy type check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+      - name: Run mypy
+        run: uv run --locked --no-sync mypy app
+
+  tests:
+    name: Pytest (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: library_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d library_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    # These credentials are only for the disposable CI database.
+    # Alembic reads DATABASE_URL; tests can also use TEST_DATABASE_URL.
+    env:
+      DATABASE_URL: postgresql+psycopg://ci_user:ci_password@127.0.0.1:5432/library_test
+      TEST_DATABASE_URL: postgresql+psycopg://ci_user:ci_password@127.0.0.1:5432/library_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+      - name: Apply database migrations
+        run: uv run --locked --no-sync alembic upgrade head
+      - name: Run pytest
+        run: uv run --locked --no-sync pytest

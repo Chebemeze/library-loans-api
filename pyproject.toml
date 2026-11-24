@@ -38,3 +38,11 @@ exclude = ["^migrations/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The application is not installed as a package; make app imports work in tests.
+pythonpath = ["."]
+# Summarize skipped/failed tests and fail on invalid config or unknown markers.
+addopts = "-ra --strict-config --strict-markers"
+markers = [
+    "integration: exercises integration with a real PostgreSQL database",
+    "concurrency: exercises concurrent database transactions",
+]
