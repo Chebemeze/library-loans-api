@@ -50,6 +50,47 @@ Money is stored as integer minor units, never floats.
 12. **Continuous integration.** GitHub Actions runs ruff, mypy and pytest on every pull request. A red build blocks the merge.
 13. **Documentation.** The README gives run steps, the rules table, the endpoint list, the known limits, and the AI-use log.
 
+## Configuration
+
+The Library Loans API uses `pydantic-settings` to load application settings from environment variables and a local `.env` file.
+
+### Setting up your environment
+
+1. Copy the example configuration file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Open `.env` and update the values to match your local environment.
+
+3. Commit `.env.example` as a safe configuration template. Never commit `.env` or real credentials to GitHub.
+
+### Environment variables
+
+| Variable | Description | Default/example |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection URL for application development | `postgresql+psycopg://gamp:gamp@127.0.0.1:5432/library` |
+| `TEST_DATABASE_URL` | Separate PostgreSQL database connection URL for tests | `postgresql+psycopg://gamp:gamp@127.0.0.1:5432/library_test` |
+| `LOAN_PERIOD_DAYS` | Number of days a member can borrow a book | `14` |
+| `LOAN_LIMIT_PER_MEMBER` | Maximum active loans per member | `3` |
+| `FINE_PER_LATE_DAY_KOBO` | Fine charged per overdue day, in kobo | `50` |
+| `FINE_CAP_PER_LOAN_KOBO` | Maximum fine per loan, in kobo; must not exceed 2,000 | `2000` |
+
+### Database configuration
+
+- `DATABASE_URL` is used for normal application development.
+- `TEST_DATABASE_URL` is reserved for automated tests.
+- Keep development and test databases separate to protect development data.
+- For local development, the database hostname is `127.0.0.1`.
+- When connecting from another service inside Docker Compose, use the PostgreSQL service name as the hostname instead of `127.0.0.1`.
+
+### Configuration limits
+
+- The maximum fine per loan is 2,000 kobo.
+- Application time calculations use UTC.
+- Do not store real passwords or credentials in `.env.example`.
+
 ## Libraries
 
 Python 3.12, uv, FastAPI, Pydantic, pydantic-settings, SQLAlchemy 2.0, psycopg 3, Alembic, PostgreSQL, pytest, httpx (test client), uvicorn, Docker and Docker Compose, GitHub Actions, ruff, mypy.
