@@ -6,7 +6,7 @@ This folder is an overlay for the **root** of `library-loans-api` on `develop`, 
 
 ```sh
 uv sync --locked --group dev
-uv run python -m pytest -q tests/test_member6_routes.py tests/test_member6_wiring.py
+uv run python -m pytest -q tests/test_routes.py tests/test_wiring.py
 uv run mypy app
 uv run ruff check app tests
 uv run uvicorn app.main:app --reload
@@ -14,13 +14,6 @@ uv run uvicorn app.main:app --reload
 
 Open `/docs`; for a DB-independent manual check try `GET /v1/loans/0` → 422 `INVALID_INPUT`. `/health/ready` is M3's actual PostgreSQL probe. M3's nested Docker build context must include this root `app/` tree. The only intentional API change to M3's router is its documented operation ID, `getReady`.
 
-## Tell M7
-
-The HTTP layer already uses **`from app.schemas.loans import Loan`**. Please adopt/review the included `app/schemas` files rather than adding parallel models. Loan reads mappings or object attributes; it requires id, member_id, copy_barcode, borrowed_at, due_at and returned_at (nullable). `app.routers.errors.register_error_handlers(app)` is installed once. Invalid requests use `422 INVALID_INPUT` with a field-specific message. Coordinate future contract changes against docs/api/openapi.yaml.
-
-## Tell M1 and M8
-
-`get_loan(session, loan_id)` is confirmed. The other service signatures below are the interface chosen by this routing patch, **not agreements already made**. Modules live under `app.services`. A handler passes the request's existing sync SQLAlchemy session, typed path IDs, and validated fields. Return a mapping or attribute object matching the indicated response; create calls return an ID-bearing object, not a bare ID. Services own commits/rollbacks and business decisions. Raise `app.services.errors.DomainError(code, message)` for a known contract error, e.g. `LOAN_NOT_FOUND`; unknown programming/DB errors are not converted into 404s. No success can be produced by an absent service. During integration an absent function yields a deliberate non-release `503 SERVICE_NOT_CONFIGURED`. Do not release until every function is available and M2 has run real DB tests.
 
 | HTTP operation ID | Service call | Result shape |
 |---|---|---|
