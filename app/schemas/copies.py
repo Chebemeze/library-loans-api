@@ -1,16 +1,17 @@
 from typing import Literal
 
-from app.schemas.common import Barcode, Input, Output
+from app.schemas.common import Barcode, ClosedOutput, Input, Output
 
 
 class CopyCreate(Input):
     barcode: Barcode
 
 
-class CreatedCopy(Output):
+class CreatedCopy(ClosedOutput):
     barcode: str
 
 
-class Copy(CreatedCopy):
+class Copy(Output):
+    barcode: str
     isbn: str
     status: Literal["available", "on_loan", "withdrawn"]

@@ -1,9 +1,10 @@
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
-from app.schemas.common import Input, Name, Output
+from app.schemas.common import ClosedOutput, Input, Name, Output
 
 Phone = Annotated[str, Field(pattern=r"^\+?[0-9]{7,19}$", max_length=20)]
 
@@ -14,7 +15,8 @@ class MemberCreate(Input):
 
 
 class MemberUpdate(Input):
-    name: Name | None = None
+    model_config = ConfigDict(json_schema_extra={"minProperties": 1})
+    name: Name | SkipJsonSchema[None] = Field(default_factory=lambda: None)
     phone: Phone | None = None
 
     @model_validator(mode="after")
@@ -26,11 +28,12 @@ class MemberUpdate(Input):
         return self
 
 
-class CreatedMember(Output):
+class CreatedMember(ClosedOutput):
     id: UUID
 
 
-class Member(CreatedMember):
+class Member(Output):
+    id: UUID
     name: str
     phone: str | None
     status: Literal["active", "suspended"]

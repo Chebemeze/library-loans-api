@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.schemas.common import Error
 from app.services.errors import DomainError
 
 NOT_FOUND = {
@@ -33,14 +34,16 @@ def register_error_handlers(app: FastAPI) -> None:
     async def invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
         error = exc.errors()[0]
         field = ".".join(map(str, error["loc"]))
-        return JSONResponse({"code": "INVALID_INPUT", "message": f"{field}: {error['msg']}"}, 422)
+        envelope = Error(code="INVALID_INPUT", message=f"{field}: {error['msg']}")
+        return JSONResponse(envelope.model_dump(), 422)
 
     @app.exception_handler(DomainError)
     async def domain(request: Request, exc: DomainError) -> JSONResponse:
         if exc.code not in NOT_FOUND | CONFLICT:
             raise exc
         return JSONResponse(
-            {"code": exc.code, "message": str(exc)}, 404 if exc.code in NOT_FOUND else 409
+            Error.model_validate({"code": exc.code, "message": str(exc)}).model_dump(),
+            404 if exc.code in NOT_FOUND else 409,
         )
 
     @app.exception_handler(MissingService)

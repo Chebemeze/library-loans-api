@@ -2,7 +2,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from app.schemas.common import Input, Output, Positive
+from app.schemas.common import ClosedOutput, Input, Output, Positive
 
 
 class Fine(Output):
@@ -22,5 +22,5 @@ class PaymentCreate(Input):
     amount_kobo: Annotated[int, Field(strict=True, ge=1)]
 
 
-class CreatedPayment(Output):
+class CreatedPayment(ClosedOutput):
     id: Positive
